@@ -8,6 +8,7 @@ import httpx
 
 from src.config import settings
 from src.pipeline import process_link, PipelineResult
+from src.storage.writer import check_duplicate
 
 logger = logging.getLogger(__name__)
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -157,9 +158,18 @@ async def run_digest() -> list[PipelineResult]:
                 seen.add(u)
                 all_urls.append(u)
 
-    logger.info(f"Running digest: {len(sources)} sources → {len(all_urls)} URLs")
+    # Pre-filter already-processed URLs so we don't pay for scrape+LLM on dupes.
+    # process_link does this internally too, but checking here saves the per-URL
+    # function-call overhead and gives clearer log/digest counts.
+    fresh_urls = [u for u in all_urls if not check_duplicate(u)]
+    skipped_dupes = len(all_urls) - len(fresh_urls)
+    logger.info(
+        f"Running digest: {len(sources)} sources → {len(all_urls)} URLs "
+        f"({skipped_dupes} already processed, {len(fresh_urls)} new)"
+    )
+
     results: list[PipelineResult] = []
-    for i, url in enumerate(all_urls):
+    for i, url in enumerate(fresh_urls):
         if i > 0:
             await asyncio.sleep(2.0)
         try:
