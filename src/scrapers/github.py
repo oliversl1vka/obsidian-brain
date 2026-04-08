@@ -3,7 +3,6 @@ import httpx
 from src.scrapers.base import BaseScraper, ScrapeResult
 import logging
 from urllib.parse import urlparse
-import asyncio
 
 logger = logging.getLogger(__name__)
 

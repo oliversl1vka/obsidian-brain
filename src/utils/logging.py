@@ -2,7 +2,6 @@ import logging
 import json
 from pathlib import Path
 from datetime import datetime, timezone
-import os
 
 def setup_logging(log_level: str = "INFO"):
     """Configure base Python logging."""
