@@ -1,4 +1,5 @@
 import logging
+import shutil
 from dataclasses import dataclass
 
 from src.brain.git_utils import sanitize_git_error_message
@@ -25,8 +26,11 @@ class BrainGitOps:
         """True if there are uncommitted changes in the configured brain repo."""
         try:
             return bool(self.repo.git.status("--porcelain").strip())
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(
+                "Could not inspect brain repo status: %s",
+                sanitize_git_error_message(e),
+            )
         return False
 
     def stage_brain(self) -> None:
@@ -70,12 +74,7 @@ class BrainGitOps:
                 target = self.brain_dir / f
                 try:
                     if target.is_dir():
-                        for child in sorted(target.rglob("*"), reverse=True):
-                            if child.is_file():
-                                child.unlink()
-                            elif child.is_dir():
-                                child.rmdir()
-                        target.rmdir()
+                        shutil.rmtree(target)
                     else:
                         target.unlink()
                 except FileNotFoundError:
