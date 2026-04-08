@@ -22,6 +22,7 @@ config.yaml
 data/
 logs/
 user_profile.md
+obsidian-brain/
 
 # KingdomOS / AI-tool run artifacts
 RUN_SUMMARY.md

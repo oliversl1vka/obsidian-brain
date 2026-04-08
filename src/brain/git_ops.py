@@ -1,10 +1,10 @@
 import logging
 from dataclasses import dataclass
-from pathlib import Path
+
+from src.brain.git_utils import sanitize_git_error_message
+from src.config import settings
 
 logger = logging.getLogger(__name__)
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-_BRAIN_DIR = "obsidian-brain"
 
 
 @dataclass
@@ -18,24 +18,20 @@ class CommitResult:
 class BrainGitOps:
     def __init__(self):
         from git import Repo
-        self.repo = Repo(_PROJECT_ROOT)
+        self.brain_dir = settings.brain_dir
+        self.repo = Repo(self.brain_dir)
 
     def has_changes(self) -> bool:
-        """True if there are uncommitted changes (modified or untracked) in obsidian-brain/."""
-        for f in self.repo.untracked_files:
-            if f.startswith(_BRAIN_DIR + "/"):
-                return True
+        """True if there are uncommitted changes in the configured brain repo."""
         try:
-            diff = self.repo.git.diff("HEAD", "--", _BRAIN_DIR)
-            if diff.strip():
-                return True
+            return bool(self.repo.git.status("--porcelain").strip())
         except Exception:
             pass
         return False
 
     def stage_brain(self) -> None:
-        """Stage all changes in obsidian-brain/."""
-        self.repo.git.add(_BRAIN_DIR)
+        """Stage all changes in the configured brain repo."""
+        self.repo.git.add("--all")
 
     def commit_brain(self, message: str) -> CommitResult:
         """Stage and commit all brain changes."""
@@ -46,8 +42,9 @@ class BrainGitOps:
             commit = self.repo.index.commit(message)
             return CommitResult(success=True, commit_sha=commit.hexsha[:7], message=message)
         except Exception as e:
-            logger.error(f"Git commit failed: {e}")
-            return CommitResult(success=False, error=str(e))
+            error = sanitize_git_error_message(e)
+            logger.error("Git commit failed: %s", error)
+            return CommitResult(success=False, error=error)
 
     def push_brain(self, remote: str = "origin", branch: str = "master") -> tuple[bool, str]:
         """Push to remote. Returns (success, error_message)."""
@@ -55,28 +52,39 @@ class BrainGitOps:
             self.repo.git.push(remote, branch)
             return True, ""
         except Exception as e:
-            logger.error(f"Git push failed: {e}")
-            return False, str(e)
+            error = sanitize_git_error_message(e)
+            logger.error("Git push failed: %s", error)
+            return False, error
 
     def discard_brain_changes(self) -> None:
-        """Revert all uncommitted brain changes (modified + new untracked files)."""
+        """Revert all uncommitted brain changes in the dedicated brain repo."""
         try:
-            for f in list(self.repo.untracked_files):
-                if f.startswith(_BRAIN_DIR + "/"):
-                    target = _PROJECT_ROOT / f
-                    try:
-                        target.unlink()
-                    except FileNotFoundError:
-                        pass
             try:
-                self.repo.git.checkout("--", _BRAIN_DIR)
+                self.repo.git.reset("--hard", "HEAD")
             except Exception as e:
-                logger.warning(f"Checkout during discard failed (may be no tracked changes): {e}")
+                logger.warning(
+                    "Reset during discard failed (may be no commits yet): %s",
+                    sanitize_git_error_message(e),
+                )
+            for f in list(self.repo.untracked_files):
+                target = self.brain_dir / f
+                try:
+                    if target.is_dir():
+                        for child in sorted(target.rglob("*"), reverse=True):
+                            if child.is_file():
+                                child.unlink()
+                            elif child.is_dir():
+                                child.rmdir()
+                        target.rmdir()
+                    else:
+                        target.unlink()
+                except FileNotFoundError:
+                    pass
         except Exception as e:
-            logger.error(f"Git discard failed: {e}")
+            logger.error("Git discard failed: %s", sanitize_git_error_message(e))
 
     def get_entry_count(self) -> int:
-        entries_dir = _PROJECT_ROOT / _BRAIN_DIR / "Entries"
+        entries_dir = self.brain_dir / "Entries"
         if not entries_dir.exists():
             return 0
         return sum(1 for _ in entries_dir.glob("*.md"))

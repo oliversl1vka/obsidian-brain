@@ -17,6 +17,7 @@ class Config:
     digest_schedule: str
     git_remote: str
     git_branch: str
+    categories: list[str]
 
 def load_config() -> Config:
     config_path = Path("config.yaml")
@@ -42,7 +43,8 @@ def load_config() -> Config:
     model_name = os.environ.get("MODEL_NAME", yaml_config.get("model_name", "gpt-4.1-mini"))
     data_dir = Path(os.environ.get("DATA_DIR", yaml_config.get("data_dir", "data")))
     log_level = os.environ.get("LOG_LEVEL", yaml_config.get("log_level", "INFO")).upper()
-    brain_dir = Path(os.environ.get("BRAIN_DIR", yaml_config.get("brain_dir", "obsidian-brain")))
+    configured_brain_dir = os.environ.get("BRAIN_DIR", yaml_config.get("brain_dir"))
+    brain_dir = Path(configured_brain_dir) if configured_brain_dir else data_dir / "obsidian-brain"
     digest_sources_file = os.environ.get("DIGEST_SOURCES_FILE", yaml_config.get("digest_sources_file", "digest_sources.txt"))
     digest_schedule = os.environ.get("DIGEST_SCHEDULE", yaml_config.get("digest_schedule", "07:00"))
     git_remote = os.environ.get("GIT_REMOTE", yaml_config.get("git_remote", "origin"))
@@ -61,6 +63,7 @@ def load_config() -> Config:
         digest_schedule=digest_schedule,
         git_remote=git_remote,
         git_branch=git_branch,
+        categories=yaml_config.get("categories", ["Uncategorized"]),
     )
 
 # Global config instance

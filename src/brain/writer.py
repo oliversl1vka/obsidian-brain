@@ -28,6 +28,7 @@ class BrainWriter:
         (self.brain_dir / "Entries").mkdir(exist_ok=True)
         (self.brain_dir / "Topics").mkdir(exist_ok=True)
         (self.brain_dir / "Logs").mkdir(exist_ok=True)
+        self._ensure_home_page()
 
         slug = _slugify(entry.title)
         entry_filename = f"{entry.date}-{slug}.md"
@@ -115,7 +116,7 @@ class BrainWriter:
             return
 
         recent_section = content[start_idx + len(start_marker) : end_idx]
-        lines = [l for l in recent_section.splitlines(keepends=True) if l.strip()]
+        lines = [line for line in recent_section.splitlines(keepends=True) if line.strip()]
         lines = [new_line] + lines[:9]  # newest first, keep 10 total
 
         updated = (
@@ -124,6 +125,27 @@ class BrainWriter:
             + content[end_idx:]
         )
         home_path.write_text(updated, encoding="utf-8")
+
+    def _ensure_home_page(self) -> None:
+        home_path = self.brain_dir / "Home.md"
+        if home_path.exists():
+            return
+
+        topics = "\n".join(f"- [[Topics/{category}]]" for category in settings.categories)
+        home_path.write_text(
+            (
+                "# LinkStash Brain\n\n"
+                "> Personal knowledge intelligence vault. Links compiled into structured knowledge via AI.\n\n"
+                "## Recently Added\n\n"
+                "<!-- RECENT_START -->\n"
+                "<!-- RECENT_END -->\n\n"
+                "## Topics\n"
+                f"{topics}\n\n"
+                "## Index\n"
+                "[[index]] — Full chronological catalog of all entries.\n"
+            ),
+            encoding="utf-8",
+        )
 
     def get_all_entry_titles(self) -> list[str]:
         """Return titles of the 100 most recent entries (for wikilink candidates)."""
