@@ -1,12 +1,11 @@
 import pytest
 from pathlib import Path
-import os
 import shutil
 
 from src.config import settings
-test_data_dir = Path("tests/test_data")
-
 from src.storage.writer import write_link_entry, check_duplicate, ensure_data_dir
+
+test_data_dir = Path("tests/test_data")
 
 @pytest.fixture(autouse=True)
 def setup_teardown():

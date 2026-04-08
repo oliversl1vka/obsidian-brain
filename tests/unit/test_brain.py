@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 from git import Repo
+from git.remote import Remote
 
 from src.brain.formatter import FormattedEntry
 from src.brain.git_bootstrap import bootstrap_brain_git
@@ -100,3 +101,18 @@ def test_bootstrap_brain_git_initializes_local_repo_without_remote(
 
     assert bootstrap_brain_git() is True
     assert (brain_test_dir / ".git").exists()
+
+
+def test_bootstrap_brain_git_configures_separate_private_remote(
+    brain_test_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("GITHUB_TOKEN", "ghp_testtoken")
+    monkeypatch.setenv("GIT_REPO_SLUG", "example/private-brain")
+    monkeypatch.setenv("GIT_BRANCH", "master")
+    monkeypatch.setattr(Remote, "fetch", lambda self: None)
+
+    assert bootstrap_brain_git() is True
+
+    repo = Repo(brain_test_dir)
+    assert repo.remotes.origin.url == "https://x-access-token:ghp_testtoken@github.com/example/private-brain.git"
