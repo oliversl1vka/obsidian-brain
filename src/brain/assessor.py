@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from src.llm.base import LLMBase
+from src.config import settings
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 logger = logging.getLogger(__name__)
@@ -57,7 +58,7 @@ class AssessmentResult:
 
 class BrainAssessor(LLMBase):
     async def assess_recent_changes(self) -> AssessmentResult | None:
-        """Assess uncommitted changes in obsidian-brain/. Returns None if no changes."""
+        """Assess uncommitted changes in the configured brain repo. Returns None if no changes."""
         diff_text, new_files_content = self._collect_changes()
 
         if not diff_text and not new_files_content:
@@ -89,19 +90,18 @@ class BrainAssessor(LLMBase):
 
     def _collect_changes(self) -> tuple[str, str]:
         """Collect (diff_text, new_files_content) for the brain dir since last commit."""
+        brain_dir = settings.brain_dir
         try:
             from git import Repo
-            repo = Repo(_PROJECT_ROOT)
+            repo = Repo(brain_dir)
         except Exception as e:
             logger.warning(f"Git not available for assessment: {e}")
             return "", ""
 
-        brain_prefix = "obsidian-brain/"
-
         new_files_content = ""
         for filepath in repo.untracked_files:
-            if filepath.startswith(brain_prefix + "Entries/"):
-                full_path = _PROJECT_ROOT / filepath
+            if filepath.startswith("Entries/"):
+                full_path = brain_dir / filepath
                 try:
                     content = full_path.read_text(encoding="utf-8")
                     new_files_content += f"\n### {filepath}\n{content}\n"
@@ -110,7 +110,7 @@ class BrainAssessor(LLMBase):
 
         diff_text = ""
         try:
-            diff_text = repo.git.diff("HEAD", "--", brain_prefix)
+            diff_text = repo.git.diff("HEAD")
         except Exception as e:
             logger.warning(f"Could not get git diff: {e}")
 

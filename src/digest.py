@@ -184,7 +184,7 @@ async def run_digest() -> list[PipelineResult]:
 
 
 def _write_digest_log(results: list[PipelineResult]) -> None:
-    """Write a per-run log to obsidian-brain/Logs/."""
+    """Write a per-run log to the configured brain Logs/ directory."""
     logs_dir = settings.brain_dir / "Logs"
     logs_dir.mkdir(parents=True, exist_ok=True)
 

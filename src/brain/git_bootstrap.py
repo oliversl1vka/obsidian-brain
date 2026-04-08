@@ -11,54 +11,48 @@ Returns True if the brain pipeline is safe to enable, False otherwise.
 
 import logging
 import os
-from pathlib import Path
+
+from src.brain.git_utils import sanitize_git_error_message
+from src.config import settings
 
 logger = logging.getLogger(__name__)
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 
 def bootstrap_brain_git() -> bool:
     """Prepare the local git repo for brain commits/pushes. Returns True on success."""
     from git import Repo
 
-    git_dir = _PROJECT_ROOT / ".git"
+    brain_dir = settings.brain_dir
+    git_dir = brain_dir / ".git"
     token = os.environ.get("GITHUB_TOKEN", "").strip()
     repo_slug = os.environ.get("GIT_REPO_SLUG", "").strip()
     branch = os.environ.get("GIT_BRANCH", "master")
+    brain_dir.mkdir(parents=True, exist_ok=True)
 
-    # If .git is missing (e.g. Railway strips it from the build context),
-    # initialize a fresh repo and pull from origin. Requires token + slug.
+    # If .git is missing, initialize a dedicated brain repo.
     if not git_dir.exists():
-        if not (token and repo_slug):
-            logger.warning(
-                "Brain disabled: .git not found at %s and GITHUB_TOKEN/GIT_REPO_SLUG "
-                "not set — cannot initialize repo.",
-                _PROJECT_ROOT,
-            )
-            return False
         try:
-            authed_url = f"https://x-access-token:{token}@github.com/{repo_slug}.git"
-            logger.info(f"No .git found — initializing repo from {repo_slug}")
-            repo = Repo.init(_PROJECT_ROOT)
-            repo.create_remote("origin", authed_url)
-            repo.remotes.origin.fetch()
-            # Reset working tree to remote branch without overwriting files we already have
-            # (the container filesystem already holds the source files from `COPY . .`)
-            repo.git.reset("--mixed", f"origin/{branch}")
-            # Create local branch tracking origin/<branch>
+            logger.info("No brain git repo found — initializing %s", brain_dir)
+            repo = Repo.init(brain_dir)
             try:
-                repo.git.checkout("-B", branch, f"origin/{branch}")
+                repo.git.checkout("-B", branch)
             except Exception as e:
-                logger.warning(f"Could not check out {branch}: {e}")
-            logger.info(f"Initialized .git and synced to origin/{branch}")
+                logger.warning("Could not check out %s: %s", branch, sanitize_git_error_message(e))
+            logger.info("Initialized brain git repo in %s", brain_dir)
         except Exception as e:
-            logger.warning(f"Brain disabled: failed to initialize git repo: {e}")
+            logger.warning(
+                "Brain disabled: failed to initialize git repo: %s",
+                sanitize_git_error_message(e),
+            )
             return False
     else:
         try:
-            repo = Repo(_PROJECT_ROOT)
+            repo = Repo(brain_dir)
         except Exception as e:
-            logger.warning(f"Brain disabled: could not open git repo: {e}")
+            logger.warning(
+                "Brain disabled: could not open git repo: %s",
+                sanitize_git_error_message(e),
+            )
             return False
 
     # 1. Set committer identity (required for `git commit`)
@@ -69,7 +63,7 @@ def bootstrap_brain_git() -> bool:
             cw.set_value("user", "email", user_email)
             cw.set_value("user", "name", user_name)
     except Exception as e:
-        logger.warning(f"Could not set git user identity: {e}")
+        logger.warning("Could not set git user identity: %s", sanitize_git_error_message(e))
 
     # 2. Inject GitHub token into origin URL if provided
     token = os.environ.get("GITHUB_TOKEN", "").strip()
@@ -82,13 +76,12 @@ def bootstrap_brain_git() -> bool:
                 repo.remotes.origin.set_url(authed_url)
             else:
                 repo.create_remote("origin", authed_url)
-            logger.info(f"Configured origin remote for {repo_slug} with token auth.")
+            logger.info("Configured brain origin remote for %s with token auth.", repo_slug)
         except Exception as e:
-            logger.warning(f"Could not configure origin remote: {e}")
+            logger.warning("Could not configure origin remote: %s", sanitize_git_error_message(e))
             return False
     elif token and not repo_slug:
-        logger.warning("GITHUB_TOKEN set but GIT_REPO_SLUG missing — cannot configure remote.")
-        return False
+        logger.warning("GITHUB_TOKEN set but GIT_REPO_SLUG missing — continuing with local-only brain repo.")
     else:
         # No token: brain commits will succeed locally but push will fail.
         # We still allow brain ops so the user can develop locally without env vars.
@@ -98,10 +91,17 @@ def bootstrap_brain_git() -> bool:
     if token and repo_slug:
         try:
             repo.remotes.origin.fetch()
-            branch = os.environ.get("GIT_BRANCH", "master")
-            repo.git.reset("--hard", f"origin/{branch}")
-            logger.info(f"Synced local repo to origin/{branch}.")
+            remote_ref = f"origin/{branch}"
+            if remote_ref in [ref.name for ref in repo.refs]:
+                repo.git.checkout("-B", branch, remote_ref)
+                repo.git.reset("--hard", remote_ref)
+                logger.info("Synced brain repo to %s.", remote_ref)
+            else:
+                logger.info("Brain remote %s has no %s yet; continuing with local branch.", repo_slug, branch)
         except Exception as e:
-            logger.warning(f"Initial git pull failed (continuing anyway): {e}")
+            logger.warning(
+                "Initial git pull failed (continuing anyway): %s",
+                sanitize_git_error_message(e),
+            )
 
     return True

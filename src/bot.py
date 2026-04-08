@@ -89,7 +89,7 @@ async def _send_processing_result(bot, chat_id: int, url: str) -> PipelineResult
                         parse_mode="Markdown",
                     )
             else:
-                await bot.send_message(chat_id=chat_id, text=f"🗑️ Not relevant — saved to bin.")
+                await bot.send_message(chat_id=chat_id, text="🗑️ Not relevant — saved to bin.")
         elif result.status == "duplicate":
             await bot.send_message(chat_id=chat_id, text=f"⏭️ {url} was already processed. Skipped.")
         else:
@@ -188,10 +188,10 @@ async def brain_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
             # Build commit message from new files count
             from git import Repo
-            repo = Repo(Path(__file__).resolve().parent.parent)
+            repo = Repo(settings.brain_dir)
             new_entries = sum(
                 1 for f in repo.untracked_files
-                if f.startswith("obsidian-brain/Entries/")
+                if f.startswith("Entries/")
             )
             commit_msg = f"brain: add {new_entries} entries via LinkStash"
 
@@ -203,10 +203,11 @@ async def brain_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             push_ok, push_err = ops.push_brain(settings.git_remote, settings.git_branch)
             total = ops.get_entry_count()
             if push_ok:
+                brain_label = settings.brain_dir.name or str(settings.brain_dir)
                 summary = (
                     f"✓ Brain updated: `{commit_result.commit_sha}`\n"
                     f"  +{new_entries} entries\n"
-                    f"  obsidian-brain/ @ {total} total entries"
+                    f"  {brain_label}/ @ {total} total entries"
                 )
             else:
                 summary = (

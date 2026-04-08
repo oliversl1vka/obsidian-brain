@@ -74,6 +74,9 @@ In the Railway dashboard → your service → **Variables**, add:
 | `USER_PROFILE` | paste the full contents of your `user_profile.md` here |
 | `MODEL_NAME` | `gpt-4.1-mini` (or any OpenAI model you prefer) |
 | `DATA_DIR` | `/data` (if using a Volume — see below) or leave unset |
+| `BRAIN_DIR` | optional — defaults to `/data/obsidian-brain` when `DATA_DIR=/data` |
+| `GITHUB_TOKEN` | optional but recommended for brain sync — fine-grained PAT with access to the brain repo |
+| `GIT_REPO_SLUG` | optional but recommended for brain sync — e.g. `youruser/linkstash-brain` |
 
 `USER_PROFILE` supports multi-line text — Railway handles it correctly.
 
@@ -84,6 +87,22 @@ Without a Volume, saved link data is lost every time the service restarts.
 1. Railway dashboard → your service → **Volumes** → **Add Volume**
 2. Mount path: `/data`
 3. Set `DATA_DIR=/data` in your environment variables
+
+By default, LinkStash now stores the Obsidian brain under `DATA_DIR/obsidian-brain`, so attaching a volume keeps the brain across restarts without checking it into the code repository.
+
+### Step 4.5 — Recommended public/private split
+
+If you want the LinkStash code repo to be public while keeping your brain private:
+
+1. Keep the code in your public `linkstash` repository
+2. Create a separate **private** repo just for the brain, for example `youruser/linkstash-brain`
+3. Set:
+   - `DATA_DIR=/data`
+   - `BRAIN_DIR=/data/obsidian-brain` (or leave it unset and use the default)
+   - `GITHUB_TOKEN=<token with access to the private brain repo>`
+   - `GIT_REPO_SLUG=youruser/linkstash-brain`
+
+LinkStash will initialize a dedicated git repo inside the brain directory and push only the brain files there, which keeps personal notes out of the public source repo.
 
 ### Step 5 — Deploy
 
@@ -107,8 +126,11 @@ All settings can be provided via environment variables (takes priority) or `conf
 | `TELEGRAM_USER_ID` | `telegram_user_id` | — | Authorised Telegram user |
 | `MODEL_NAME` | `model_name` | `gpt-4.1-mini` | OpenAI model |
 | `DATA_DIR` | `data_dir` | `data` | Where Markdown files are saved |
+| `BRAIN_DIR` | `brain_dir` | `<data_dir>/obsidian-brain` | Where the Obsidian brain vault lives |
 | `LOG_LEVEL` | `log_level` | `INFO` | Logging verbosity |
 | `USER_PROFILE` | *(file only)* | — | Personal profile content (overrides `user_profile.md`) |
+| `GITHUB_TOKEN` | *(env only)* | — | Token used to sync the private brain repo |
+| `GIT_REPO_SLUG` | *(env only)* | — | Private repo slug for brain sync, e.g. `youruser/linkstash-brain` |
 
 ---
 

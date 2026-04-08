@@ -7,16 +7,16 @@ data_dir: "data"            # Or use DATA_DIR env var (e.g. /data for a Railway 
 log_level: "INFO"           # Or use LOG_LEVEL env var
 
 # Brain / knowledge vault settings
-brain_dir: "obsidian-brain"         # Or use BRAIN_DIR env var
+brain_dir: "data/obsidian-brain"    # Optional. Defaults to <data_dir>/obsidian-brain, which stays gitignored.
 digest_sources_file: "digest_sources.txt"  # Or use DIGEST_SOURCES_FILE env var
 digest_schedule: "07:00"            # UTC time for daily digest (HH:MM). Or use DIGEST_SCHEDULE env var
-git_remote: "origin"                # Git remote to push brain commits to. Or use GIT_REMOTE env var
+git_remote: "origin"                # Git remote inside the dedicated brain repo. Or use GIT_REMOTE env var
 git_branch: "master"                # Git branch to push to. Or use GIT_BRANCH env var
 
 # Brain runtime env vars (Railway / containers — set as env vars, not here):
 #   BRAIN_ENABLED      "false" to disable brain features entirely (link saving still works)
 #   GITHUB_TOKEN       Personal access token with `repo` scope, used to push brain commits
-#   GIT_REPO_SLUG      e.g. "youruser/LinkStash" — used to build the authed remote URL
+#   GIT_REPO_SLUG      e.g. "youruser/linkstash-brain" — private repo used for the brain vault
 #   GIT_USER_EMAIL     Committer email (default: linkstash-bot@users.noreply.github.com)
 #   GIT_USER_NAME      Committer name  (default: LinkStash Bot)
 
