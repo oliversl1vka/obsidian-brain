@@ -19,22 +19,47 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 def bootstrap_brain_git() -> bool:
     """Prepare the local git repo for brain commits/pushes. Returns True on success."""
-    git_dir = _PROJECT_ROOT / ".git"
-    if not git_dir.exists():
-        logger.warning(
-            "Brain disabled: .git directory not found at %s. "
-            "On Railway this means the build did not include .git — "
-            "ensure you are using the Dockerfile builder, not Nixpacks.",
-            _PROJECT_ROOT,
-        )
-        return False
+    from git import Repo
 
-    try:
-        from git import Repo
-        repo = Repo(_PROJECT_ROOT)
-    except Exception as e:
-        logger.warning(f"Brain disabled: could not open git repo: {e}")
-        return False
+    git_dir = _PROJECT_ROOT / ".git"
+    token = os.environ.get("GITHUB_TOKEN", "").strip()
+    repo_slug = os.environ.get("GIT_REPO_SLUG", "").strip()
+    branch = os.environ.get("GIT_BRANCH", "master")
+
+    # If .git is missing (e.g. Railway strips it from the build context),
+    # initialize a fresh repo and pull from origin. Requires token + slug.
+    if not git_dir.exists():
+        if not (token and repo_slug):
+            logger.warning(
+                "Brain disabled: .git not found at %s and GITHUB_TOKEN/GIT_REPO_SLUG "
+                "not set — cannot initialize repo.",
+                _PROJECT_ROOT,
+            )
+            return False
+        try:
+            authed_url = f"https://x-access-token:{token}@github.com/{repo_slug}.git"
+            logger.info(f"No .git found — initializing repo from {repo_slug}")
+            repo = Repo.init(_PROJECT_ROOT)
+            repo.create_remote("origin", authed_url)
+            repo.remotes.origin.fetch()
+            # Reset working tree to remote branch without overwriting files we already have
+            # (the container filesystem already holds the source files from `COPY . .`)
+            repo.git.reset("--mixed", f"origin/{branch}")
+            # Create local branch tracking origin/<branch>
+            try:
+                repo.git.checkout("-B", branch, f"origin/{branch}")
+            except Exception as e:
+                logger.warning(f"Could not check out {branch}: {e}")
+            logger.info(f"Initialized .git and synced to origin/{branch}")
+        except Exception as e:
+            logger.warning(f"Brain disabled: failed to initialize git repo: {e}")
+            return False
+    else:
+        try:
+            repo = Repo(_PROJECT_ROOT)
+        except Exception as e:
+            logger.warning(f"Brain disabled: could not open git repo: {e}")
+            return False
 
     # 1. Set committer identity (required for `git commit`)
     user_email = os.environ.get("GIT_USER_EMAIL", "linkstash-bot@users.noreply.github.com")
