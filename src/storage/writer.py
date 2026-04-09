@@ -4,6 +4,10 @@ from datetime import datetime, timezone
 from urllib.parse import urlparse, parse_qsl, urlencode, urlunparse
 from src.config import settings
 
+INDEX_FILE_NAME = "index.md"
+GITHUB_REPO_STATE_FILE_NAME = "github-repo-state.md"
+_EXCLUDED_METADATA_FILES = {INDEX_FILE_NAME, GITHUB_REPO_STATE_FILE_NAME}
+
 def normalize_url(url: str) -> str:
     """Normalize a URL for deduplication: lowercase scheme/host, strip trailing slash, sort query params."""
     try:
@@ -20,6 +24,85 @@ def normalize_url(url: str) -> str:
         return url
 
 
+def canonicalize_github_repo_url(url: str) -> str | None:
+    """Return the canonical GitHub repository URL for repository-like GitHub URLs."""
+    parsed = urlparse(url)
+    if parsed.netloc.lower() not in {"github.com", "www.github.com"}:
+        return None
+
+    path_parts = [part for part in parsed.path.strip("/").split("/") if part]
+    if len(path_parts) < 2:
+        return None
+    if parsed.path.lower().endswith(".ipynb"):
+        return None
+
+    owner, repo = path_parts[0].lower(), path_parts[1].lower()
+    return normalize_url(f"https://github.com/{owner}/{repo}")
+
+
+def is_github_repository_url(url: str) -> bool:
+    """True when the URL targets a GitHub repository rather than a file/blob."""
+    return canonicalize_github_repo_url(url) is not None
+
+
+def _github_repo_state_path() -> Path:
+    return settings.data_dir / GITHUB_REPO_STATE_FILE_NAME
+
+
+def get_last_checked_github_commit(url: str) -> str | None:
+    """Return the last recorded commit SHA for a GitHub repository URL."""
+    canonical_url = canonicalize_github_repo_url(url)
+    state_path = _github_repo_state_path()
+    if not canonical_url or not state_path.exists():
+        return None
+
+    url_pattern = re.compile(r"- \*\*Repo URL\*\*: (.+)")
+    commit_pattern = re.compile(r"- \*\*Last Checked Commit\*\*: (.+)")
+
+    current_url: str | None = None
+    with open(state_path, "r", encoding="utf-8") as state_file:
+        for line in state_file:
+            stripped_line = line.strip()
+            url_match = url_pattern.match(stripped_line)
+            if url_match:
+                current_url = normalize_url(url_match.group(1).strip())
+                continue
+
+            commit_match = commit_pattern.match(stripped_line)
+            if commit_match and current_url == canonical_url:
+                return commit_match.group(1).strip()
+
+    return None
+
+
+def record_github_repo_check(url: str, commit_sha: str) -> None:
+    """Persist the latest checked commit for a GitHub repository URL."""
+    canonical_url = canonicalize_github_repo_url(url)
+    if not canonical_url or not commit_sha:
+        return
+
+    ensure_data_dir()
+    state_path = _github_repo_state_path()
+    checked_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    entry = (
+        f"## {canonical_url} ({checked_at})\n"
+        f"- **Repo URL**: {canonical_url}\n"
+        f"- **Last Checked Commit**: {commit_sha}\n"
+        f"- **Checked At**: {checked_at}\n\n---\n\n"
+    )
+
+    header = "# GitHub Repo State\n\n"
+    existing_entries = ""
+    if state_path.exists():
+        content = state_path.read_text(encoding="utf-8")
+        if content.startswith(header):
+            existing_entries = content[len(header):]
+        else:
+            existing_entries = content
+
+    state_path.write_text(header + entry + existing_entries, encoding="utf-8")
+
+
 def get_link_stats() -> dict:
     """Return total links saved, per-category counts, and the 3 most recent entries."""
     if not settings.data_dir.exists():
@@ -33,7 +116,7 @@ def get_link_stats() -> dict:
     date_pattern = re.compile(r"\((\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\)")
 
     for md_file in sorted(settings.data_dir.glob("*.md"), key=lambda f: f.name):
-        if md_file.name == "index.md":
+        if md_file.name in _EXCLUDED_METADATA_FILES:
             continue
         category = md_file.stem.replace("-", " ").title()
         count = 0
@@ -106,7 +189,7 @@ def write_link_entry(category: str, url: str, title: str, summary: str, status: 
 
 def _update_index(category: str, url: str, title: str, date_str: str) -> None:
     """Prepend a new entry to data/index.md (newest first)."""
-    index_path = settings.data_dir / "index.md"
+    index_path = settings.data_dir / INDEX_FILE_NAME
     index_entry = f"- [{title}]({url}) — **{category}** ({date_str})\n"
 
     index_header = "# LinkStash Index\n\n"
@@ -134,6 +217,8 @@ def check_duplicate(url: str) -> bool:
     url_pattern = re.compile(r"- \*\*URL\*\*: (.+)")
 
     for md_file in settings.data_dir.rglob("*.md"):
+        if md_file.name in _EXCLUDED_METADATA_FILES:
+            continue
         with open(md_file, "r", encoding="utf-8") as f:
             for line in f:
                 match = url_pattern.match(line.strip())

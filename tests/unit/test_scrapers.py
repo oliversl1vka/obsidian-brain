@@ -1,3 +1,6 @@
+import base64
+
+import httpx
 import pytest
 from src.scrapers.base import ScrapeResult, BaseScraper, get_scraper_for_url, UnsupportedFormatScraper
 from src.scrapers.github import GitHubScraper
@@ -61,6 +64,150 @@ async def test_github_scraper_invalid_url():
     result = await scraper.scrape("https://github.com/invalid") # Missing repo
     assert result.status == "failed"
     assert "Invalid GitHub repository" in result.error_reason
+
+
+class FakeResponse:
+    def __init__(self, url: str, status_code: int, payload: dict):
+        self.url = url
+        self.status_code = status_code
+        self._payload = payload
+
+    def json(self):
+        return self._payload
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            request = httpx.Request("GET", self.url)
+            response = httpx.Response(self.status_code, request=request)
+            raise httpx.HTTPStatusError(f"HTTP {self.status_code}", request=request, response=response)
+
+
+class FakeAsyncClient:
+    def __init__(self, responses: dict[str, FakeResponse], calls: list[str], **kwargs):
+        self.responses = responses
+        self.calls = calls
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+    async def get(self, url: str):
+        self.calls.append(url)
+        return self.responses[url]
+
+
+@pytest.mark.asyncio
+async def test_github_scraper_first_scrape_collects_full_repository(monkeypatch):
+    scraper = GitHubScraper()
+    calls = []
+    recorded_commits = []
+    responses = {
+        "https://api.github.com/repos/owner/repo": FakeResponse(
+            "https://api.github.com/repos/owner/repo",
+            200,
+            {"description": "Repo description", "default_branch": "main", "language": "Python"},
+        ),
+        "https://api.github.com/repos/owner/repo/branches/main": FakeResponse(
+            "https://api.github.com/repos/owner/repo/branches/main",
+            200,
+            {"commit": {"sha": "head123"}},
+        ),
+        "https://api.github.com/repos/owner/repo/git/trees/main?recursive=1": FakeResponse(
+            "https://api.github.com/repos/owner/repo/git/trees/main?recursive=1",
+            200,
+            {
+                "tree": [
+                    {"path": "README.md", "type": "blob", "sha": "sha-readme", "size": 9},
+                    {"path": "src", "type": "tree"},
+                    {"path": "src/app.py", "type": "blob", "sha": "sha-app", "size": 12},
+                    {"path": "image.png", "type": "blob", "sha": "sha-image", "size": 12},
+                ]
+            },
+        ),
+        "https://api.github.com/repos/owner/repo/git/blobs/sha-readme": FakeResponse(
+            "https://api.github.com/repos/owner/repo/git/blobs/sha-readme",
+            200,
+            {"encoding": "base64", "content": base64.b64encode(b"# Hello\n").decode("utf-8")},
+        ),
+        "https://api.github.com/repos/owner/repo/git/blobs/sha-app": FakeResponse(
+            "https://api.github.com/repos/owner/repo/git/blobs/sha-app",
+            200,
+            {"encoding": "base64", "content": base64.b64encode(b'print("hi")\n').decode("utf-8")},
+        ),
+    }
+
+    monkeypatch.setattr("src.scrapers.github.get_last_checked_github_commit", lambda url: None)
+    monkeypatch.setattr("src.scrapers.github.record_github_repo_check", lambda url, sha: recorded_commits.append((url, sha)))
+    monkeypatch.setattr(
+        "src.scrapers.github.httpx.AsyncClient",
+        lambda **kwargs: FakeAsyncClient(responses, calls, **kwargs),
+    )
+
+    result = await scraper.scrape("https://github.com/owner/repo")
+
+    assert result.status == "success"
+    assert "Previously checked commit: None" in result.content
+    assert "--- FILE CONTENTS ---" in result.content
+    assert "### README.md" in result.content
+    assert 'print("hi")' in result.content
+    assert "image.png" in result.content
+    assert all("/compare/" not in call for call in calls)
+    assert recorded_commits == [("https://github.com/owner/repo", "head123")]
+
+
+@pytest.mark.asyncio
+async def test_github_scraper_repeat_scrape_uses_compare_api(monkeypatch):
+    scraper = GitHubScraper()
+    calls = []
+    recorded_commits = []
+    responses = {
+        "https://api.github.com/repos/owner/repo": FakeResponse(
+            "https://api.github.com/repos/owner/repo",
+            200,
+            {"description": "Repo description", "default_branch": "main", "language": "Python"},
+        ),
+        "https://api.github.com/repos/owner/repo/branches/main": FakeResponse(
+            "https://api.github.com/repos/owner/repo/branches/main",
+            200,
+            {"commit": {"sha": "head456"}},
+        ),
+        "https://api.github.com/repos/owner/repo/compare/old123...head456": FakeResponse(
+            "https://api.github.com/repos/owner/repo/compare/old123...head456",
+            200,
+            {
+                "commits": [{"sha": "head456", "commit": {"message": "Add feature"}}],
+                "files": [
+                    {
+                        "filename": "src/app.py",
+                        "status": "modified",
+                        "additions": 2,
+                        "deletions": 1,
+                        "patch": "@@ -1 +1 @@\n-print('old')\n+print('new')",
+                    }
+                ],
+            },
+        ),
+    }
+
+    monkeypatch.setattr("src.scrapers.github.get_last_checked_github_commit", lambda url: "old123")
+    monkeypatch.setattr("src.scrapers.github.record_github_repo_check", lambda url, sha: recorded_commits.append((url, sha)))
+    monkeypatch.setattr(
+        "src.scrapers.github.httpx.AsyncClient",
+        lambda **kwargs: FakeAsyncClient(responses, calls, **kwargs),
+    )
+
+    result = await scraper.scrape("https://github.com/owner/repo")
+
+    assert result.status == "success"
+    assert "Previously checked commit: old123" in result.content
+    assert "--- CHANGES SINCE LAST CHECK ---" in result.content
+    assert "From old123 to head456" in result.content
+    assert "### src/app.py" in result.content
+    assert "--- FILE CONTENTS ---" not in result.content
+    assert any("/compare/old123...head456" in call for call in calls)
+    assert recorded_commits == [("https://github.com/owner/repo", "head456")]
 
 
 # --- NotebookScraper Tests ---
