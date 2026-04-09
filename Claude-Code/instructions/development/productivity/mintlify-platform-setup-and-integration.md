@@ -1,5 +1,5 @@
 ---
-name: mintlify-platform-etup-and-integration
+name: mintlify-platform-setup-and-integration
 description: Provides setup, integration, and architecture guidance for using the
   Mintlify knowledge platform, including embedding AI assistants in frontend frameworks
   and managing multi-repo workflows. Use this when adopting Mintlify to automate documentation
