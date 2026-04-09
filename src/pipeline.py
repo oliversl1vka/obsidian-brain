@@ -20,6 +20,7 @@ class PipelineResult:
     summary: str
     status: str
     notify: bool
+    scrape_content: str = ""
 
 async def process_link(url: str) -> PipelineResult:
     """Core deterministic pipeline: Ingest -> Scrape -> Summarize -> Categorize -> Evaluate -> Store."""
@@ -30,6 +31,7 @@ async def process_link(url: str) -> PipelineResult:
     summary = "scrape_failed"
     status = "failed"
     notify = False
+    scrape_content = ""
     
     try:
         # T019: Duplicate Check
@@ -41,11 +43,12 @@ async def process_link(url: str) -> PipelineResult:
         scraper = get_scraper_for_url(url)
         scrape_result = await scraper.scrape(url)
         title = scrape_result.title
+        scrape_content = scrape_result.content
         
         if scrape_result.status == "failed":
             summary = f"Scrape failed: {scrape_result.error_reason}"
             write_link_entry("Uncategorized", url, title, summary, scrape_result.status)
-            return PipelineResult(url, title, "Uncategorized", summary, scrape_result.status, False)
+            return PipelineResult(url, title, "Uncategorized", summary, scrape_result.status, False, scrape_content)
 
         # 2. Summarize
         summarizer = Summarizer()
@@ -67,7 +70,7 @@ async def process_link(url: str) -> PipelineResult:
             write_link_entry("bin", url, title, summary, status)
             category = "bin"
 
-        return PipelineResult(url, title, category, summary, status, notify)
+        return PipelineResult(url, title, category, summary, status, notify, scrape_content)
         
     except Exception as e:
         logger.exception(f"Unexpected error processing {url}: {e}")
@@ -84,4 +87,4 @@ async def process_link(url: str) -> PipelineResult:
             write_link_entry("Uncategorized", url, title, error_msg, "failed")
         except Exception as storage_err:
             logger.error(f"Failed to store error entry for {url}: {storage_err}")
-        return PipelineResult(url, title, "Uncategorized", error_msg, "failed", False)
+        return PipelineResult(url, title, "Uncategorized", error_msg, "failed", False, scrape_content)

@@ -5,8 +5,8 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from src.llm.base import LLMBase
 from src.config import settings
+from src.llm.base import LLMBase
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 logger = logging.getLogger(__name__)
@@ -43,16 +43,18 @@ class AssessmentResult:
             return "\n".join(lines)
         if self.suggestions:
             lines.append("\n*Quality suggestions:*")
-            for s in self.suggestions[:4]:
-                lines.append(f"  • {s}")
+            for suggestion in self.suggestions[:4]:
+                lines.append(f"  • {suggestion}")
         if self.duplicates:
             lines.append("\n*Possible duplicates:*")
-            for d in self.duplicates[:4]:
-                lines.append(f"  ⚠️ \"{d.new_entry}\" may duplicate `{d.existing_file}`")
+            for duplicate in self.duplicates[:4]:
+                lines.append(f"  ⚠️ \"{duplicate.new_entry}\" may duplicate `{duplicate.existing_file}`")
         if self.merge_candidates:
             lines.append("\n*Merge candidates:*")
-            for m in self.merge_candidates[:4]:
-                lines.append(f"  🔗 \"{m.new_entry}\" + \"{m.target_entry}\" — {m.reason}")
+            for candidate in self.merge_candidates[:4]:
+                lines.append(
+                    f"  🔗 \"{candidate.new_entry}\" + \"{candidate.target_entry}\" — {candidate.reason}"
+                )
         return "\n".join(lines)
 
 
@@ -84,8 +86,8 @@ class BrainAssessor(LLMBase):
                 str(_PROJECT_ROOT / "prompts" / "assess_diff.md"), context, max_tokens=800
             )
             return _parse_assessment(raw)
-        except Exception as e:
-            logger.error(f"Assessor LLM error: {e}")
+        except Exception as exc:
+            logger.error(f"Assessor LLM error: {exc}")
             return AssessmentResult(quality_ok=True)
 
     def _collect_changes(self) -> tuple[str, str]:
@@ -93,14 +95,15 @@ class BrainAssessor(LLMBase):
         brain_dir = settings.brain_dir
         try:
             from git import Repo
+
             repo = Repo(brain_dir)
-        except Exception as e:
-            logger.warning(f"Git not available for assessment: {e}")
+        except Exception as exc:
+            logger.warning(f"Git not available for assessment: {exc}")
             return "", ""
 
         new_files_content = ""
         for filepath in repo.untracked_files:
-            if filepath.startswith("Entries/"):
+            if filepath.startswith("Entries/") or filepath.startswith("Claude-Code/"):
                 full_path = brain_dir / filepath
                 try:
                     content = full_path.read_text(encoding="utf-8")
@@ -111,8 +114,8 @@ class BrainAssessor(LLMBase):
         diff_text = ""
         try:
             diff_text = repo.git.diff("HEAD")
-        except Exception as e:
-            logger.warning(f"Could not get git diff: {e}")
+        except Exception as exc:
+            logger.warning(f"Could not get git diff: {exc}")
 
         max_chars = 30_000
         if len(new_files_content) > max_chars:
@@ -129,18 +132,18 @@ def _parse_assessment(text: str) -> AssessmentResult:
     data = json.loads(text.strip())
 
     duplicates = [
-        DuplicateInfo(new_entry=d.get("new_entry", ""), existing_file=d.get("existing_file", ""))
-        for d in data.get("duplicates", [])
-        if isinstance(d, dict)
+        DuplicateInfo(new_entry=item.get("new_entry", ""), existing_file=item.get("existing_file", ""))
+        for item in data.get("duplicates", [])
+        if isinstance(item, dict)
     ]
     merge_candidates = [
         MergeCandidate(
-            new_entry=m.get("new_entry", ""),
-            target_entry=m.get("target_entry", ""),
-            reason=m.get("reason", ""),
+            new_entry=item.get("new_entry", ""),
+            target_entry=item.get("target_entry", ""),
+            reason=item.get("reason", ""),
         )
-        for m in data.get("merge_candidates", [])
-        if isinstance(m, dict)
+        for item in data.get("merge_candidates", [])
+        if isinstance(item, dict)
     ]
     return AssessmentResult(
         quality_ok=bool(data.get("quality_ok", True)),
