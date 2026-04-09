@@ -235,7 +235,7 @@ class GitHubScraper(BaseScraper):
             return False
         name_root, separator, extension = lower_name.rpartition(".")
         if separator:
-            extension = f".{extension}"
-            if extension in _BINARY_EXTENSIONS:
+            dotted_extension = f".{extension}"
+            if dotted_extension in _BINARY_EXTENSIONS:
                 return False
         return lower_name in _TEXT_FILE_NAMES or bool(separator and name_root)

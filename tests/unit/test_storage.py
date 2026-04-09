@@ -119,6 +119,7 @@ def test_check_duplicate_no_data_dir():
         shutil.rmtree(test_data_dir)
     
     assert check_duplicate("http://anything.com") is False
+    ensure_data_dir()
 
 
 def test_github_repo_state_round_trip():

@@ -25,7 +25,7 @@ def normalize_url(url: str) -> str:
 
 
 def canonicalize_github_repo_url(url: str) -> str | None:
-    """Return a canonical GitHub repository URL, or None for non-repository GitHub URLs."""
+    """Return a normalized https://github.com/<owner>/<repo> URL, or None for non-repository GitHub URLs."""
     parsed = urlparse(url)
     if parsed.netloc.lower() not in {"github.com", "www.github.com"}:
         return None
