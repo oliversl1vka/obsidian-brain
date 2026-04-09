@@ -2,8 +2,10 @@ import logging
 import asyncio
 import os
 import sys
+from dataclasses import dataclass
 from datetime import time as dt_time, timezone
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -29,6 +31,10 @@ from src.pipeline import process_link, PipelineResult
 from src.storage.writer import get_link_stats
 from src.digest import run_digest
 
+if TYPE_CHECKING:
+    from src.brain.writer import WrittenEntry
+    from src.brain.skill_pipeline import SkillPipelineResult
+
 BRAIN_ASSESS_JOB = "brain_assess"
 BRAIN_DEBOUNCE_SECONDS = 10.0
 
@@ -38,6 +44,13 @@ _brain_enabled = False
 
 setup_logging(settings.log_level)
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class KnowledgeWriteResult:
+    brain_written: bool
+    written_entry: "WrittenEntry | None" = None
+    skill_result: "SkillPipelineResult | None" = None
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -110,21 +123,30 @@ async def _send_processing_result(bot, chat_id: int, url: str) -> PipelineResult
         return None
 
 
-async def _write_result_to_brain(result: PipelineResult, chat_id: int) -> bool:
-    """Format and write a successful pipeline result to the brain vault. Returns True on success."""
+async def _write_result_to_brain(result: PipelineResult, chat_id: int) -> KnowledgeWriteResult:
+    """Format and write a successful pipeline result to the brain vault and optional Claude artifact tree."""
     try:
         from src.brain.formatter import EntryFormatter
+        from src.brain.skill_pipeline import process_skill
         from src.brain.writer import BrainWriter
 
         writer = BrainWriter()
         existing_titles = writer.get_all_entry_titles()
         formatter = EntryFormatter()
         formatted = await formatter.format_entry(result, existing_titles)
-        writer.write_entry(formatted)
-        return True
+        written_entry = writer.write_entry(formatted)
+
+        skill_result = None
+        if settings.skills_enabled:
+            try:
+                skill_result = await process_skill(result, written_entry)
+            except Exception as skill_error:
+                logger.exception(f"Claude artifact pipeline error for {result.url}: {skill_error}")
+
+        return KnowledgeWriteResult(True, written_entry=written_entry, skill_result=skill_result)
     except Exception as e:
         logger.exception(f"Brain pipeline error for {result.url}: {e}")
-        return False
+        return KnowledgeWriteResult(False)
 
 
 def _schedule_brain_assess(context: ContextTypes.DEFAULT_TYPE, chat_id: int) -> None:
@@ -189,11 +211,13 @@ async def brain_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             # Build commit message from new files count
             from git import Repo
             repo = Repo(settings.brain_dir)
-            new_entries = sum(
-                1 for f in repo.untracked_files
-                if f.startswith("Entries/")
-            )
-            commit_msg = f"brain: add {new_entries} entries via LinkStash"
+            status_lines = repo.git.status("--porcelain").splitlines()
+            new_entries = sum(1 for line in status_lines if line[3:].startswith("Entries/"))
+            claude_artifacts = sum(1 for line in status_lines if line[3:].startswith("Claude-Code/"))
+            commit_msg = f"brain: sync {new_entries} entries"
+            if claude_artifacts:
+                commit_msg += f" and {claude_artifacts} Claude artifacts"
+            commit_msg += " via LinkStash"
 
             commit_result = ops.commit_brain(commit_msg)
             if not commit_result.success:
@@ -207,7 +231,8 @@ async def brain_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
                 summary = (
                     f"✓ Brain updated: `{commit_result.commit_sha}`\n"
                     f"  +{new_entries} entries\n"
-                    f"  {brain_label}/ @ {total} total entries"
+                    + (f"  +{claude_artifacts} Claude artifacts\n" if claude_artifacts else "")
+                    + f"  {brain_label}/ @ {total} total entries"
                 )
             else:
                 summary = (
@@ -230,7 +255,14 @@ async def process_link_job(context: ContextTypes.DEFAULT_TYPE):
     result = await _send_processing_result(context.bot, chat_id, url)
 
     if result and result.status == "success" and result.notify and _brain_enabled:
-        if await _write_result_to_brain(result, chat_id):
+        knowledge_result = await _write_result_to_brain(result, chat_id)
+        if knowledge_result.skill_result is not None:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=knowledge_result.skill_result.format_telegram_message(),
+                parse_mode="Markdown",
+            )
+        if knowledge_result.brain_written:
             _schedule_brain_assess(context, chat_id)
 
 
@@ -240,7 +272,13 @@ async def _delayed_process_link(bot, chat_id: int, url: str, delay_seconds: floa
         await asyncio.sleep(delay_seconds)
     result = await _send_processing_result(bot, chat_id, url)
     if result and result.status == "success" and result.notify and _brain_enabled:
-        await _write_result_to_brain(result, chat_id)
+        knowledge_result = await _write_result_to_brain(result, chat_id)
+        if knowledge_result.skill_result is not None:
+            await bot.send_message(
+                chat_id=chat_id,
+                text=knowledge_result.skill_result.format_telegram_message(),
+                parse_mode="Markdown",
+            )
 
 
 async def digest_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -250,13 +288,17 @@ async def digest_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     await update.message.reply_text("🗓 Running digest...")
     results = await run_digest()
     notify = [r for r in results if r.status == "success" and r.notify]
+    skill_count = 0
     if _brain_enabled:
         for r in notify:
-            await _write_result_to_brain(r, update.effective_chat.id)
+            knowledge_result = await _write_result_to_brain(r, update.effective_chat.id)
+            if knowledge_result.skill_result is not None:
+                skill_count += 1
     summary = (
         f"Digest complete: {len(notify)} saved, "
         f"{len([r for r in results if r.status == 'duplicate'])} duplicates, "
-        f"{len([r for r in results if r.status == 'failed'])} failed."
+        f"{len([r for r in results if r.status == 'failed'])} failed"
+        + (f", {skill_count} Claude artifacts updated." if skill_count else ".")
     )
     await update.message.reply_text(summary)
     if notify and _brain_enabled:
@@ -270,12 +312,16 @@ async def daily_digest_job(context: ContextTypes.DEFAULT_TYPE) -> None:
         await context.bot.send_message(chat_id=chat_id, text="🗓 Running scheduled daily digest...")
         results = await run_digest()
         notify = [r for r in results if r.status == "success" and r.notify]
+        skill_count = 0
         for r in notify:
-            await _write_result_to_brain(r, chat_id)
+            knowledge_result = await _write_result_to_brain(r, chat_id)
+            if knowledge_result.skill_result is not None:
+                skill_count += 1
         summary = (
             f"Daily digest: {len(notify)} saved, "
             f"{len([r for r in results if r.status == 'duplicate'])} duplicates, "
-            f"{len([r for r in results if r.status == 'failed'])} failed."
+            f"{len([r for r in results if r.status == 'failed'])} failed"
+            + (f", {skill_count} Claude artifacts updated." if skill_count else ".")
         )
         await context.bot.send_message(chat_id=chat_id, text=summary)
         if notify and _brain_enabled:

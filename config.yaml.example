@@ -8,6 +8,8 @@ log_level: "INFO"           # Or use LOG_LEVEL env var
 
 # Brain / knowledge vault settings
 brain_dir: "data/obsidian-brain"    # Optional. Defaults to <data_dir>/obsidian-brain, which stays gitignored.
+skills_enabled: false                # Optional. Or use SKILLS_ENABLED env var to generate Claude Code artifacts in the same repo.
+skills_dir: "data/obsidian-brain/Claude-Code"  # Optional. Defaults to <brain_dir>/Claude-Code. Or use SKILLS_DIR env var.
 digest_sources_file: "digest_sources.txt"  # Or use DIGEST_SOURCES_FILE env var
 digest_schedule: "07:00"            # UTC time for daily digest (HH:MM). Or use DIGEST_SCHEDULE env var
 git_remote: "origin"                # Git remote inside the dedicated brain repo. Or use GIT_REMOTE env var
@@ -19,6 +21,8 @@ git_branch: "master"                # Git branch to push to. Or use GIT_BRANCH e
 #   GIT_REPO_SLUG      e.g. "youruser/linkstash-brain" — private repo used for the brain vault
 #   GIT_USER_EMAIL     Committer email (default: linkstash-bot@users.noreply.github.com)
 #   GIT_USER_NAME      Committer name  (default: LinkStash Bot)
+#   SKILLS_ENABLED     true/false toggle for Claude Code artifact generation
+#   SKILLS_DIR         override the Claude artifact root path inside the brain repo
 
 # Categories used for link classification.
 # Edit freely — these are passed to the LLM as the allowed output values.

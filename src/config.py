@@ -3,6 +3,13 @@ import yaml
 from pathlib import Path
 from dataclasses import dataclass
 
+
+def _env_bool(name: str, default: bool) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() not in {"0", "false", "no", "off", ""}
+
 @dataclass
 class Config:
     openai_api_key: str
@@ -13,6 +20,8 @@ class Config:
     data_dir: Path
     log_level: str
     brain_dir: Path
+    skills_enabled: bool
+    skills_dir: Path
     digest_sources_file: str
     digest_schedule: str
     git_remote: str
@@ -45,6 +54,9 @@ def load_config() -> Config:
     log_level = os.environ.get("LOG_LEVEL", yaml_config.get("log_level", "INFO")).upper()
     configured_brain_dir = os.environ.get("BRAIN_DIR", yaml_config.get("brain_dir"))
     brain_dir = Path(configured_brain_dir) if configured_brain_dir else data_dir / "obsidian-brain"
+    skills_enabled = _env_bool("SKILLS_ENABLED", bool(yaml_config.get("skills_enabled", False)))
+    configured_skills_dir = os.environ.get("SKILLS_DIR", yaml_config.get("skills_dir"))
+    skills_dir = Path(configured_skills_dir) if configured_skills_dir else brain_dir / "Claude-Code"
     digest_sources_file = os.environ.get("DIGEST_SOURCES_FILE", yaml_config.get("digest_sources_file", "digest_sources.txt"))
     digest_schedule = os.environ.get("DIGEST_SCHEDULE", yaml_config.get("digest_schedule", "07:00"))
     git_remote = os.environ.get("GIT_REMOTE", yaml_config.get("git_remote", "origin"))
@@ -59,6 +71,8 @@ def load_config() -> Config:
         data_dir=data_dir,
         log_level=log_level,
         brain_dir=brain_dir,
+        skills_enabled=skills_enabled,
+        skills_dir=skills_dir,
         digest_sources_file=digest_sources_file,
         digest_schedule=digest_schedule,
         git_remote=git_remote,

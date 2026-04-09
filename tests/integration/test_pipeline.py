@@ -139,6 +139,7 @@ async def test_pipeline_single_link_happy_path():
         assert result.category == "AI Tools & Open Source"
         assert result.notify is True
         assert "Python testing" in result.summary
+        assert result.scrape_content == "Article about Python testing."
         
         # Verify file was written
         cat_file = test_data_dir / "ai-tools-open-source.md"
