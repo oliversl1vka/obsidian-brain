@@ -1,5 +1,6 @@
 import logging
 import os
+from binascii import Error as BinasciiError
 from base64 import b64decode
 from typing import Any
 from urllib.parse import urlparse
@@ -215,8 +216,8 @@ class GitHubScraper(BaseScraper):
             return ""
 
         try:
-            decoded = b64decode(content, validate=False)
-        except ValueError:
+            decoded = b64decode(content, validate=True)
+        except (BinasciiError, ValueError):
             return ""
 
         if len(decoded) > MAX_BLOB_BYTES:
@@ -232,8 +233,9 @@ class GitHubScraper(BaseScraper):
         lower_name = file_name.lower()
         if size > MAX_BLOB_BYTES:
             return False
-        if "." in lower_name:
-            extension = "." + lower_name.rsplit(".", maxsplit=1)[-1]
+        name_root, separator, extension = lower_name.rpartition(".")
+        if separator:
+            extension = f".{extension}"
             if extension in _BINARY_EXTENSIONS:
                 return False
-        return lower_name in _TEXT_FILE_NAMES or "." in lower_name
+        return lower_name in _TEXT_FILE_NAMES or bool(separator and name_root)
