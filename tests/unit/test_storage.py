@@ -115,9 +115,8 @@ def test_ensure_data_dir_creates_directory():
 
 def test_check_duplicate_no_data_dir():
     """check_duplicate returns False when data dir doesn't exist."""
-    import shutil as sh
     if test_data_dir.exists():
-        sh.rmtree(test_data_dir)
+        shutil.rmtree(test_data_dir)
     
     assert check_duplicate("http://anything.com") is False
 

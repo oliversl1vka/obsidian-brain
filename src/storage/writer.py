@@ -25,7 +25,7 @@ def normalize_url(url: str) -> str:
 
 
 def canonicalize_github_repo_url(url: str) -> str | None:
-    """Return the canonical GitHub repository URL for repository-like GitHub URLs."""
+    """Return a canonical GitHub repository URL, or None for non-repository GitHub URLs."""
     parsed = urlparse(url)
     if parsed.netloc.lower() not in {"github.com", "www.github.com"}:
         return None
@@ -41,7 +41,7 @@ def canonicalize_github_repo_url(url: str) -> str | None:
 
 
 def is_github_repository_url(url: str) -> bool:
-    """True when the URL targets a GitHub repository rather than a file/blob."""
+    """Return False for non-repository GitHub URLs and True only for repository-like GitHub URLs."""
     return canonicalize_github_repo_url(url) is not None
 
 
@@ -50,7 +50,7 @@ def _github_repo_state_path() -> Path:
 
 
 def get_last_checked_github_commit(url: str) -> str | None:
-    """Return the last recorded commit SHA for a GitHub repository URL."""
+    """Return the recorded commit SHA, or None for invalid GitHub repo URLs or unknown repos."""
     canonical_url = canonicalize_github_repo_url(url)
     state_path = _github_repo_state_path()
     if not canonical_url or not state_path.exists():
@@ -76,7 +76,7 @@ def get_last_checked_github_commit(url: str) -> str | None:
 
 
 def record_github_repo_check(url: str, commit_sha: str) -> None:
-    """Persist the latest checked commit for a GitHub repository URL."""
+    """Persist the latest checked commit, returning early for invalid GitHub URLs or empty SHAs."""
     canonical_url = canonicalize_github_repo_url(url)
     if not canonical_url or not commit_sha:
         return
