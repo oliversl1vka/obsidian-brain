@@ -4,7 +4,7 @@ from src.scrapers.base import get_scraper_for_url
 from src.llm.summarizer import Summarizer
 from src.llm.categorizer import Categorizer
 from src.llm.evaluator import Evaluator
-from src.storage.writer import write_link_entry, check_duplicate
+from src.storage.writer import write_link_entry, check_duplicate, is_github_repository_url
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ async def process_link(url: str) -> PipelineResult:
     
     try:
         # T019: Duplicate Check
-        if check_duplicate(url):
+        if not is_github_repository_url(url) and check_duplicate(url):
             logger.info(f"Duplicate link skipped: {url}")
             return PipelineResult(url, title, category, "Duplicate link, skipped.", "duplicate", False)
         

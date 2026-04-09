@@ -3,7 +3,15 @@ from pathlib import Path
 import shutil
 
 from src.config import settings
-from src.storage.writer import write_link_entry, check_duplicate, ensure_data_dir
+from src.storage.writer import (
+    GITHUB_REPO_STATE_FILE_NAME,
+    check_duplicate,
+    ensure_data_dir,
+    get_last_checked_github_commit,
+    is_github_repository_url,
+    record_github_repo_check,
+    write_link_entry,
+)
 
 test_data_dir = Path("tests/test_data")
 
@@ -107,8 +115,37 @@ def test_ensure_data_dir_creates_directory():
 
 def test_check_duplicate_no_data_dir():
     """check_duplicate returns False when data dir doesn't exist."""
-    import shutil as sh
+    existed_before = test_data_dir.exists()
     if test_data_dir.exists():
-        sh.rmtree(test_data_dir)
-    
-    assert check_duplicate("http://anything.com") is False
+        shutil.rmtree(test_data_dir)
+
+    try:
+        assert check_duplicate("http://anything.com") is False
+    finally:
+        if existed_before:
+            ensure_data_dir()
+        elif test_data_dir.exists():
+            shutil.rmtree(test_data_dir)
+
+
+def test_github_repo_state_round_trip():
+    record_github_repo_check("https://github.com/Owner/Repo/tree/main/src", "abc123")
+
+    state_file = test_data_dir / GITHUB_REPO_STATE_FILE_NAME
+    assert state_file.exists()
+    assert get_last_checked_github_commit("https://github.com/owner/repo") == "abc123"
+    assert get_last_checked_github_commit("https://github.com/owner/repo/tree/main/src") == "abc123"
+    assert get_last_checked_github_commit("https://github.com/owner/repo/issues") is None
+
+
+def test_github_repo_state_file_is_not_treated_as_duplicate():
+    record_github_repo_check("https://github.com/owner/repo", "abc123")
+
+    assert check_duplicate("https://github.com/owner/repo") is False
+
+
+def test_is_github_repository_url_ignores_notebooks():
+    assert is_github_repository_url("https://github.com/owner/repo") is True
+    assert is_github_repository_url("https://github.com/owner/repo/tree/main/src") is True
+    assert is_github_repository_url("https://github.com/owner/repo/blob/main/file.py") is False
+    assert is_github_repository_url("https://github.com/owner/repo/blob/main/notebook.ipynb") is False

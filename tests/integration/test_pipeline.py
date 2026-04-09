@@ -40,6 +40,57 @@ async def test_pipeline_duplicate_handling():
 
 
 @pytest.mark.asyncio
+async def test_pipeline_github_repo_url_bypasses_duplicate_guard():
+    """GitHub repository URLs should be reprocessed so the scraper can check for new commits."""
+    import src.pipeline
+    from src.scrapers.base import BaseScraper
+    from src.llm.summarizer import Summarizer
+    from src.llm.categorizer import Categorizer
+    from src.llm.evaluator import Evaluator
+
+    class MockGitHubScraper(BaseScraper):
+        async def scrape(self, url: str) -> ScrapeResult:
+            return ScrapeResult(url=url, title="owner/repo", content="Repository diff", status="success")
+
+    class MockSummarizer(Summarizer):
+        async def generate_response(self, p, c, max_tokens=500):
+            return "Repository summary."
+
+    class MockCategorizer(Categorizer):
+        async def generate_response(self, p, c, max_tokens=500):
+            return "AI Tools & Open Source"
+
+    class MockEvaluator(Evaluator):
+        async def generate_response(self, p, c, max_tokens=500):
+            return "notify"
+
+    original_get_scraper = src.pipeline.get_scraper_for_url
+    original_dup = src.pipeline.check_duplicate
+    orig_summarizer = src.pipeline.Summarizer
+    orig_categorizer = src.pipeline.Categorizer
+    orig_evaluator = src.pipeline.Evaluator
+
+    src.pipeline.get_scraper_for_url = lambda url: MockGitHubScraper()
+    src.pipeline.check_duplicate = lambda url: True
+    src.pipeline.Summarizer = MockSummarizer
+    src.pipeline.Categorizer = MockCategorizer
+    src.pipeline.Evaluator = MockEvaluator
+
+    try:
+        result = await process_link("https://github.com/owner/repo")
+
+        assert result.status == "success"
+        assert result.title == "owner/repo"
+        assert result.notify is True
+    finally:
+        src.pipeline.get_scraper_for_url = original_get_scraper
+        src.pipeline.check_duplicate = original_dup
+        src.pipeline.Summarizer = orig_summarizer
+        src.pipeline.Categorizer = orig_categorizer
+        src.pipeline.Evaluator = orig_evaluator
+
+
+@pytest.mark.asyncio
 async def test_pipeline_single_link_happy_path():
     """US1: Full pipeline with mocked scraper and LLM produces a stored success result."""
     import src.pipeline
