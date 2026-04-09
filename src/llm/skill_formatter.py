@@ -76,7 +76,7 @@ class SkillFormatter(LLMBase):
             if content:
                 return FormattedArtifact(content=content, references=references)
         except Exception as e:
-            logger.error(f"Skill formatter error, using fallback artifact: {e}")
+            logger.exception(f"Skill formatter error, using fallback artifact: {e}")
 
         return FormattedArtifact(content=_fallback_content(decision, result, existing_content), references=[])
 
@@ -91,9 +91,13 @@ def _sanitize_filename(filename: str) -> str:
     filename = filename.lower().strip()
     filename = re.sub(r"[^a-z0-9._-]", "-", filename)
     filename = re.sub(r"-+", "-", filename)
-    if not filename.endswith(".md"):
-        filename = f"{filename}.md"
-    return filename.strip("-")
+    filename = filename.lstrip(".")
+    if filename.endswith(".md"):
+        filename = filename[:-3]
+    filename = filename.strip("-_.")
+    if not filename:
+        return ""
+    return f"{filename}.md"
 
 
 def _fallback_content(

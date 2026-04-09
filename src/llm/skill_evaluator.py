@@ -59,7 +59,26 @@ class SkillEvaluator(LLMBase):
             max_tokens=700,
             system_prompt_template_path=str(_PROJECT_ROOT / "prompts" / "skill_evaluator_system.md"),
         )
-        parsed = _parse_json_response(raw)
+        try:
+            parsed = _parse_json_response(raw)
+            if not isinstance(parsed, dict):
+                raise TypeError("Skill evaluator response did not parse to a JSON object.")
+        except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+            logger.warning(
+                "Skill evaluator returned malformed JSON payload; skipping artifact generation: %s",
+                exc,
+            )
+            return SkillEvaluationResult(
+                worth_creating=False,
+                reasoning="Evaluator returned malformed JSON.",
+                artifact_type="none",
+                name="",
+                description="",
+                domain_path="",
+                action="skip",
+                existing_path="",
+                merge_reasoning="",
+            )
         artifact_type = str(parsed.get("artifact_type", "none")).strip().lower()
         action = str(parsed.get("action", "skip")).strip().lower()
         existing_path = str(parsed.get("existing_path", "")).strip()

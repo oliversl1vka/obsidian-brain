@@ -5,6 +5,7 @@ import sys
 from dataclasses import dataclass
 from datetime import time as dt_time, timezone
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -30,6 +31,10 @@ from src.pipeline import process_link, PipelineResult
 from src.storage.writer import get_link_stats
 from src.digest import run_digest
 
+if TYPE_CHECKING:
+    from src.brain.writer import WrittenEntry
+    from src.brain.skill_pipeline import SkillPipelineResult
+
 BRAIN_ASSESS_JOB = "brain_assess"
 BRAIN_DEBOUNCE_SECONDS = 10.0
 
@@ -44,8 +49,8 @@ logger = logging.getLogger(__name__)
 @dataclass
 class KnowledgeWriteResult:
     brain_written: bool
-    written_entry: object | None = None
-    skill_result: object | None = None
+    written_entry: "WrittenEntry | None" = None
+    skill_result: "SkillPipelineResult | None" = None
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
