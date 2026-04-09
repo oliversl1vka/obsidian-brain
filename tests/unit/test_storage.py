@@ -134,7 +134,8 @@ def test_github_repo_state_round_trip():
     state_file = test_data_dir / GITHUB_REPO_STATE_FILE_NAME
     assert state_file.exists()
     assert get_last_checked_github_commit("https://github.com/owner/repo") == "abc123"
-    assert get_last_checked_github_commit("https://github.com/owner/repo/issues") == "abc123"
+    assert get_last_checked_github_commit("https://github.com/owner/repo/tree/main/src") == "abc123"
+    assert get_last_checked_github_commit("https://github.com/owner/repo/issues") is None
 
 
 def test_github_repo_state_file_is_not_treated_as_duplicate():
@@ -146,4 +147,5 @@ def test_github_repo_state_file_is_not_treated_as_duplicate():
 def test_is_github_repository_url_ignores_notebooks():
     assert is_github_repository_url("https://github.com/owner/repo") is True
     assert is_github_repository_url("https://github.com/owner/repo/tree/main/src") is True
+    assert is_github_repository_url("https://github.com/owner/repo/blob/main/file.py") is False
     assert is_github_repository_url("https://github.com/owner/repo/blob/main/notebook.ipynb") is False

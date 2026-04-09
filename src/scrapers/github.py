@@ -13,6 +13,7 @@ from src.storage.writer import get_last_checked_github_commit, record_github_rep
 logger = logging.getLogger(__name__)
 
 MAX_REPO_FILES = 60
+MAX_STRUCTURE_ENTRIES = 200
 MAX_BLOB_BYTES = 20_000
 MAX_TOTAL_CONTENT_CHARS = 120_000
 _BINARY_EXTENSIONS = {
@@ -126,12 +127,16 @@ class GitHubScraper(BaseScraper):
         total_chars = 0
         fetched_files = 0
         skipped_files = 0
+        structure_truncated = 0
 
         for item in tree_items:
             path = item.get("path", "")
             item_type = item.get("type", "")
             icon = "📁" if item_type == "tree" else "📄"
-            structure_lines.append(f"{icon} {path}")
+            if len(structure_lines) < MAX_STRUCTURE_ENTRIES:
+                structure_lines.append(f"{icon} {path}")
+            else:
+                structure_truncated += 1
 
             if item_type != "blob" or not self._should_fetch_file(path, item.get("size", 0)):
                 if item_type == "blob":
@@ -156,6 +161,11 @@ class GitHubScraper(BaseScraper):
             fetched_files += 1
 
         content = "--- STRUCTURE ---\n" + "\n".join(structure_lines)
+        if structure_truncated:
+            content += (
+                "\n\n--- STRUCTURE NOTES ---\n"
+                f"Truncated {structure_truncated} additional paths from the recursive repository tree.\n"
+            )
         if file_sections:
             content += "\n\n--- FILE CONTENTS ---\n" + "\n\n".join(file_sections)
         if skipped_files:
@@ -219,8 +229,9 @@ class GitHubScraper(BaseScraper):
         if encoding != "base64" or not content:
             return ""
 
+        normalized_content = "".join(content.split())
         try:
-            decoded = b64decode(content, validate=True)
+            decoded = b64decode(normalized_content, validate=True)
         except (BinasciiError, ValueError):
             return ""
 

@@ -130,7 +130,12 @@ async def test_github_scraper_first_scrape_collects_full_repository(monkeypatch)
         "https://api.github.com/repos/owner/repo/git/blobs/sha-readme": FakeResponse(
             "https://api.github.com/repos/owner/repo/git/blobs/sha-readme",
             200,
-            {"encoding": "base64", "content": base64.b64encode(b"# Hello\n").decode("utf-8")},
+            {
+                "encoding": "base64",
+                "content": base64.b64encode(b"# Hello\n").decode("utf-8")[:4]
+                + "\n"
+                + base64.b64encode(b"# Hello\n").decode("utf-8")[4:],
+            },
         ),
         "https://api.github.com/repos/owner/repo/git/blobs/sha-app": FakeResponse(
             "https://api.github.com/repos/owner/repo/git/blobs/sha-app",
@@ -161,6 +166,46 @@ async def test_github_scraper_first_scrape_collects_full_repository(monkeypatch)
     assert 'print("hi")' in result.content
     assert "image.png" in result.content
     assert all("/compare/" not in call for call in calls)
+    assert recorded_commits == [("https://github.com/owner/repo", "head123")]
+
+
+@pytest.mark.asyncio
+async def test_github_scraper_limits_structure_output(monkeypatch):
+    scraper = GitHubScraper()
+    calls = []
+    recorded_commits = []
+    large_tree = [{"path": f"file-{index}.py", "type": "blob", "sha": f"sha-{index}", "size": 999999} for index in range(205)]
+    responses = {
+        "https://api.github.com/repos/owner/repo": FakeResponse(
+            "https://api.github.com/repos/owner/repo",
+            200,
+            {"description": "Repo description", "default_branch": "main", "language": "Python"},
+        ),
+        "https://api.github.com/repos/owner/repo/branches/main": FakeResponse(
+            "https://api.github.com/repos/owner/repo/branches/main",
+            200,
+            {"commit": {"sha": "head123"}},
+        ),
+        "https://api.github.com/repos/owner/repo/git/trees/main?recursive=1": FakeResponse(
+            "https://api.github.com/repos/owner/repo/git/trees/main?recursive=1",
+            200,
+            {"tree": large_tree},
+        ),
+    }
+
+    monkeypatch.setattr("src.scrapers.github.get_last_checked_github_commit", lambda url: None)
+    monkeypatch.setattr("src.scrapers.github.record_github_repo_check", lambda url, sha: recorded_commits.append((url, sha)))
+    monkeypatch.setattr(
+        "src.scrapers.github.httpx.AsyncClient",
+        lambda **kwargs: FakeAsyncClient(responses, calls, **kwargs),
+    )
+
+    result = await scraper.scrape("https://github.com/owner/repo")
+
+    assert result.status == "success"
+    assert "file-199.py" in result.content
+    assert "file-204.py" not in result.content
+    assert "Truncated 5 additional paths" in result.content
     assert recorded_commits == [("https://github.com/owner/repo", "head123")]
 
 
