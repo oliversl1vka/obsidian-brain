@@ -174,7 +174,10 @@ async def test_github_scraper_limits_structure_output(monkeypatch):
     scraper = GitHubScraper()
     calls = []
     recorded_commits = []
-    large_tree = [{"path": f"file-{index}.py", "type": "blob", "sha": f"sha-{index}", "size": 999999} for index in range(205)]
+    large_tree = [
+        {"path": f"file-{file_index}.py", "type": "blob", "sha": f"sha-{file_index}", "size": 999999}
+        for file_index in range(205)
+    ]
     responses = {
         "https://api.github.com/repos/owner/repo": FakeResponse(
             "https://api.github.com/repos/owner/repo",

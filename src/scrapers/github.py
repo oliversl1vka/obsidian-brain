@@ -229,6 +229,7 @@ class GitHubScraper(BaseScraper):
         if encoding != "base64" or not content:
             return ""
 
+        # GitHub blob payloads commonly contain embedded line breaks in the base64 content.
         normalized_content = "".join(content.split())
         try:
             decoded = b64decode(normalized_content, validate=True)
