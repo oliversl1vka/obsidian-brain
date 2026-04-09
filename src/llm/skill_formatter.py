@@ -94,7 +94,7 @@ def _sanitize_filename(filename: str) -> str:
     filename = filename.lstrip(".")
     if filename.endswith(".md"):
         filename = filename[:-3]
-    filename = filename.strip("-_.")
+    filename = filename.strip("-_").lstrip(".")
     if not filename:
         return ""
     return f"{filename}.md"

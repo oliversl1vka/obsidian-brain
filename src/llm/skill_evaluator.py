@@ -62,7 +62,7 @@ class SkillEvaluator(LLMBase):
         try:
             parsed = _parse_json_response(raw)
             if not isinstance(parsed, dict):
-                raise TypeError("Skill evaluator response did not parse to a JSON object.")
+                raise TypeError("Skill evaluator response parsed to non-dict type.")
         except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
             logger.warning(
                 "Skill evaluator returned malformed JSON payload; skipping artifact generation: %s",
