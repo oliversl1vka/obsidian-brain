@@ -3,7 +3,7 @@ import base64
 import httpx
 import pytest
 from src.scrapers.base import ScrapeResult, BaseScraper, get_scraper_for_url, UnsupportedFormatScraper
-from src.scrapers.github import GitHubScraper
+from src.scrapers.github import GitHubScraper, MAX_STRUCTURE_ENTRIES
 from src.scrapers.notebook import NotebookScraper
 from src.scrapers.article import ArticleScraper
 from src.scrapers.pdf import PdfScraper
@@ -98,6 +98,10 @@ class FakeAsyncClient:
         return self.responses[url]
 
 
+def _inject_base64_line_break(content: str, position: int = 4) -> str:
+    return content[:position] + "\n" + content[position:]
+
+
 @pytest.mark.asyncio
 async def test_github_scraper_first_scrape_collects_full_repository(monkeypatch):
     scraper = GitHubScraper()
@@ -132,9 +136,7 @@ async def test_github_scraper_first_scrape_collects_full_repository(monkeypatch)
             200,
             {
                 "encoding": "base64",
-                "content": base64.b64encode(b"# Hello\n").decode("utf-8")[:4]
-                + "\n"
-                + base64.b64encode(b"# Hello\n").decode("utf-8")[4:],
+                "content": _inject_base64_line_break(base64.b64encode(b"# Hello\n").decode("utf-8")),
             },
         ),
         "https://api.github.com/repos/owner/repo/git/blobs/sha-app": FakeResponse(
@@ -174,9 +176,10 @@ async def test_github_scraper_limits_structure_output(monkeypatch):
     scraper = GitHubScraper()
     calls = []
     recorded_commits = []
+    large_tree_size = MAX_STRUCTURE_ENTRIES + 5
     large_tree = [
         {"path": f"file-{file_index}.py", "type": "blob", "sha": f"sha-{file_index}", "size": 999999}
-        for file_index in range(205)
+        for file_index in range(large_tree_size)
     ]
     responses = {
         "https://api.github.com/repos/owner/repo": FakeResponse(
@@ -206,8 +209,8 @@ async def test_github_scraper_limits_structure_output(monkeypatch):
     result = await scraper.scrape("https://github.com/owner/repo")
 
     assert result.status == "success"
-    assert "file-199.py" in result.content
-    assert "file-204.py" not in result.content
+    assert f"file-{MAX_STRUCTURE_ENTRIES - 1}.py" in result.content
+    assert f"file-{large_tree_size - 1}.py" not in result.content
     assert "Truncated 5 additional paths" in result.content
     assert recorded_commits == [("https://github.com/owner/repo", "head123")]
 

@@ -162,10 +162,7 @@ class GitHubScraper(BaseScraper):
 
         content = "--- STRUCTURE ---\n" + "\n".join(structure_lines)
         if structure_truncated:
-            content += (
-                "\n\n--- STRUCTURE NOTES ---\n"
-                f"Truncated {structure_truncated} additional paths from the recursive repository tree.\n"
-            )
+            content += f"\n\n[Truncated {structure_truncated} additional paths from the recursive repository tree.]\n"
         if file_sections:
             content += "\n\n--- FILE CONTENTS ---\n" + "\n\n".join(file_sections)
         if skipped_files:
