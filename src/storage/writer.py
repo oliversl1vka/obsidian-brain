@@ -33,7 +33,8 @@ def canonicalize_github_repo_url(url: str) -> str | None:
     path_parts = [part for part in parsed.path.strip("/").split("/") if part]
     if len(path_parts) < 2:
         return None
-    if parsed.path.lower().endswith(".ipynb"):
+    final_path_part = path_parts[-1].lower()
+    if final_path_part.endswith(".ipynb"):
         return None
 
     owner, repo = path_parts[0].lower(), path_parts[1].lower()

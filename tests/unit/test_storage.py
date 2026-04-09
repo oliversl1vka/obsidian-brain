@@ -115,13 +115,17 @@ def test_ensure_data_dir_creates_directory():
 
 def test_check_duplicate_no_data_dir():
     """check_duplicate returns False when data dir doesn't exist."""
+    existed_before = test_data_dir.exists()
     if test_data_dir.exists():
         shutil.rmtree(test_data_dir)
 
     try:
         assert check_duplicate("http://anything.com") is False
     finally:
-        ensure_data_dir()
+        if existed_before:
+            ensure_data_dir()
+        elif test_data_dir.exists():
+            shutil.rmtree(test_data_dir)
 
 
 def test_github_repo_state_round_trip():

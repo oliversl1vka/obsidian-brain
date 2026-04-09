@@ -147,7 +147,10 @@ class GitHubScraper(BaseScraper):
                 continue
 
             remaining_chars = MAX_TOTAL_CONTENT_CHARS - total_chars
+            is_truncated = len(blob_text) > remaining_chars
             trimmed_text = blob_text[:remaining_chars]
+            if is_truncated:
+                trimmed_text += "\n[TRUNCATED]"
             file_sections.append(f"### {path}\n{trimmed_text}")
             total_chars += len(trimmed_text)
             fetched_files += 1
@@ -240,4 +243,4 @@ class GitHubScraper(BaseScraper):
             dotted_extension = f".{extension}"
             if dotted_extension in _BINARY_EXTENSIONS:
                 return False
-        return lower_name in _TEXT_FILE_NAMES or has_extension
+        return lower_name in _TEXT_FILE_NAMES or lower_name.startswith(".") or has_extension or not separator

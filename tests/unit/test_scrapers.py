@@ -122,6 +122,7 @@ async def test_github_scraper_first_scrape_collects_full_repository(monkeypatch)
                     {"path": "README.md", "type": "blob", "sha": "sha-readme", "size": 9},
                     {"path": "src", "type": "tree"},
                     {"path": "src/app.py", "type": "blob", "sha": "sha-app", "size": 12},
+                    {"path": ".gitignore", "type": "blob", "sha": "sha-ignore", "size": 6},
                     {"path": "image.png", "type": "blob", "sha": "sha-image", "size": 12},
                 ]
             },
@@ -135,6 +136,11 @@ async def test_github_scraper_first_scrape_collects_full_repository(monkeypatch)
             "https://api.github.com/repos/owner/repo/git/blobs/sha-app",
             200,
             {"encoding": "base64", "content": base64.b64encode(b'print("hi")\n').decode("utf-8")},
+        ),
+        "https://api.github.com/repos/owner/repo/git/blobs/sha-ignore": FakeResponse(
+            "https://api.github.com/repos/owner/repo/git/blobs/sha-ignore",
+            200,
+            {"encoding": "base64", "content": base64.b64encode(b".venv\n").decode("utf-8")},
         ),
     }
 
@@ -151,6 +157,7 @@ async def test_github_scraper_first_scrape_collects_full_repository(monkeypatch)
     assert "Previously checked commit: None" in result.content
     assert "--- FILE CONTENTS ---" in result.content
     assert "### README.md" in result.content
+    assert "### .gitignore" in result.content
     assert 'print("hi")' in result.content
     assert "image.png" in result.content
     assert all("/compare/" not in call for call in calls)
