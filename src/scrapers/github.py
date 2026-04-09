@@ -65,10 +65,11 @@ class GitHubScraper(BaseScraper):
                         client, api_base, last_checked_commit, head_commit
                     )
                     if repo_content is None:
+                        full_snapshot = await self._build_full_content(client, api_base, default_branch)
                         repo_content = (
                             f"--- CHANGES SINCE LAST CHECK ---\n"
                             f"Could not diff {last_checked_commit}..{head_commit}; using a full snapshot instead.\n\n"
-                            f"{await self._build_full_content(client, api_base, default_branch)}"
+                            f"{full_snapshot}"
                         )
                 elif last_checked_commit == head_commit:
                     repo_content = (
@@ -234,8 +235,9 @@ class GitHubScraper(BaseScraper):
         if size > MAX_BLOB_BYTES:
             return False
         name_root, separator, extension = lower_name.rpartition(".")
+        has_extension = bool(separator and name_root)
         if separator:
             dotted_extension = f".{extension}"
             if dotted_extension in _BINARY_EXTENSIONS:
                 return False
-        return lower_name in _TEXT_FILE_NAMES or bool(separator and name_root)
+        return lower_name in _TEXT_FILE_NAMES or has_extension
