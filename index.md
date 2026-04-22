@@ -6,3 +6,4 @@
 - [2026-04-20] [Redesigning Claude Code on desktop for parallel agents | Claude](https://claude.com/blog/claude-code-desktop-redesign) — **AI Tools & Open Source** · [[Entries/2026-04-20-redesigning-claude-code-on-desktop-for-parallel-agents-claud]]
 - [2026-04-20] [Claude Managed Agents: get to production 10x faster | Claude](https://claude.com/blog/claude-managed-agents) — **AI Tools & Open Source** · [[Entries/2026-04-20-claude-managed-agents-get-to-production-10x-faster-claude]]
 - [2026-04-20] [Harnessing Claude's Intelligence | 3 Key Patterns for Building Apps | Claude](https://claude.com/blog/harnessing-claudes-intelligence) — **2. AI Tools & Open Source** · [[Entries/2026-04-20-harnessing-claudes-intelligence-3-key-patterns-for-building-]]
+- [2026-04-22] [Pioneer AI by Fastino Labs](https://pioneer.ai/) — **1b. AI Training & Fine-tuning** · [[Entries/2026-04-22-pioneer-ai-by-fastino-labs]]
